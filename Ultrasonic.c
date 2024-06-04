@@ -4,17 +4,19 @@
 #define RW P0_6
 #define EN P0_5
 #define trig P3_5
-#define eco P3_2
+#define echo P3_2
 
-
-void lcd_start(void);
+__sfr DPTR=0x82;
+unsigned int range=0;
+unsigned char get;
+ 
 void lcd_init(void);
 void lcd_busy(void);
 void lcd_data(char);
 void lcd_cmd(char);
-void lcd_display(char*);
+void lcd_print(char*);
 void send_pluse(void);
-unsigned int get_range(void);
+unsigned char ultrasonic(void);
 void Delay_us()
 {
 	TL0=0xF5;
@@ -25,27 +27,27 @@ void Delay_us()
 	TF0=0;
 }
 
-
-int cms;
-
 void main()
 {
  lcd_init();
- lcd_display("Start");
+ lcd_print("Start");
  TMOD = 0x09;
  TR0 = 1;
  TH0 = 0x00;
  TL0 = 0x00;
- eco = 0x04;
+ P3 = (1<<2);
  /*lcd_display("LCD Working");*/
  while(1)
  {
- get_range();
- Delay_us();
+    lcd_cmd(0x84);
+    range=ultrasonic();
+    lcd_data((range/100)+48);
+    lcd_data(((range/10)%10)+48);
+    lcd_data((range%10)+48);
  }
 }
 
-void send_pluse(void)
+void send_pluse()
 {
   TH0 = 0x00;
   TL0 = 0x00;
@@ -53,113 +55,82 @@ void send_pluse(void)
   Delay_us();
   trig = 0;
 }
-unsigned int get_range(void)
+unsigned char ultrasonic()
 {
- long int timer_val,i=0;
- send_pluse();
- while(!INT0);
- TR0 = 1;  
- while(INT0);
- TR0 = 0;  
- timer_val = (TH0<<8) + TL0;
- lcd_cmd(0x81);
- lcd_display("Output");
- lcd_cmd(0x8a);
- if(timer_val < 38000)
- {
-  cms = timer_val/59;
-  if((cms!=0) && (cms<100))
+ 
+  send_pluse();
+  while(!echo);
+  while(echo);
+  DPH=TH0;
+  DPL=TL0;
+  TH0=TL0=0xff;
+  if(DPTR<38000)
   {
-   lcd_display((cms/10)+48);
-   lcd_display((cms%10)+48);
-   
-  }
- }
- else{
-  lcd_cmd(0x06);
-  lcd_display("Out of Range");
- }
+    get=DPTR/59;
+    }
+  else{
+    get=0;
+    }
+  return get;
 }
 
 void lcd_init(void)
 {
- EN=0;
- lcd_start();
- lcd_cmd(0x01);
- lcd_cmd(0x0C);
- lcd_cmd(0x06);
- lcd_cmd(0x80);
-}
-
-void lcd_busy(void)
-{
- char b=0x80;
- DATA=0xF0;
- RS=0;
- RW=1;
- while(b!=0x00)
- {
-  EN=1;
-  b=DATA;
-  EN=0;
-  EN=1;
-  EN=0;
-  b=b&0x80;
- }
-}
-
-void lcd_data(char d)
-{
- char d1,d0;
- RS=1;
- RW=0;
- DATA=(d&0xF0);
- EN=1;
- EN=0;
- DATA=(d<<4);
- EN=1;
- EN=0;
- lcd_busy();
+lcd_busy();
+lcd_cmd(0x38);
+lcd_cmd(0x01);
+lcd_cmd(0x0C);
+lcd_cmd(0x06);
+lcd_cmd(0x80);
 }
 
 
 void lcd_cmd(char c)
 {
- RS=0;
- RW=0;
- DATA=(c&0xF0);
- EN=1;
- EN=0;
- DATA=(c<<4);
- EN=1;
- EN=0;
- lcd_busy();
+DATA=c;
+RS=0;
+RW=0;
+EN=1;
+EN=0;
+lcd_busy();
 }
 
-void lcd_display(char*b)
+void lcd_data(char d)
 {
- while(*b!=0x00)
- {
-  lcd_data(*b);
-  *b++;
- }
+DATA=d;
+RS=1;
+RW=0;
+EN=1;
+EN=0;
+lcd_busy();
 }
-
-void lcd_start(void)
+void lcd_busy()
 {
- EN=0;
- lcd_busy();
- RS=0;
- RW=0;
- DATA=0x30;
- EN=1;
- EN=0;
- lcd_busy();
- DATA=0x20;
- EN=1;
- EN=0;
- lcd_busy();
- lcd_cmd(0x28);
- P1_0=0;
+char s;
+RS=0;
+RW=1;
+DATA=0xFF;
+EN=1;
+s=DATA&0x80;
+EN=0;  
+while(s!=0x00)
+{
+  EN=1;
+  s=DATA&0x80;
+  EN=0;
+}
 }
 
+void lcd_print(char*msg)
+{
+while(*msg!=0x00)
+{
+  lcd_data(*msg);
+  *msg++;
+}
+}
+void lcd_delay(void)
+{
+  unsigned int i;
+  for(i=0;i<=1000;i++);
+}
